@@ -1,0 +1,204 @@
+---
+title: "Content Analysis of FH and EIU metrics"
+subtitle: "Honours Thesis Analysis"
+author: "Saaz Sahdra"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tm)
+library(RNewsflow)
+library(quanteda)
+library(readtext)
+set.seed(1234)
+```
+
+# Lexicon 
+
+```{r, message=FALSE, warning=FALSE}
+polyarchy.edem.lexicon <- dictionary(list(polyarchy = c("elect*", "free*", "fair*", "express*", "right*", "autonom*", "independ*", "indiv*", "inclusive", "law*", "participat*", "equal*", "corrupt*", "consensus*", "democra*", "undemocra*", "order", "vot*"), edem = c("internet", "media", "social", "communicat*", "tech*", "comput*", "inform*", "participat*", "censor*", "propagand*", "e-*", "online", "consult*", "privacy")))
+```
+
+# EIU 
+
+### Creating corpus 
+
+```{r, message=FALSE, warning=FALSE}
+eiu_methodology <- readtext("~/Documents/USYD/YR4_2022/Honours/Analysis/Data/EIU/methodology_word/*.pdf") 
+eiu_methodology$doc_id <- str_sub(eiu_methodology$doc_id, start = 1, end = -5)
+eiu.corpus <- corpus(eiu_methodology)
+docvars(eiu.corpus, "Textno") <- sprintf("%02d", 1:ndoc(eiu.corpus))
+docvars(eiu.corpus, "Source") <- "eiu"
+eiu.corpus.stats <- summary(eiu.corpus)
+eiu.corpus.stats$Text <- reorder(eiu.corpus.stats$Text, 1:ndoc(eiu.corpus), order = T)
+eiu.token <-
+  tokens(
+    eiu.corpus,
+    split_hyphens = TRUE,
+    remove_numbers = TRUE,
+    remove_punct = TRUE,
+    remove_symbols = TRUE,
+    remove_url = TRUE,
+    include_docvars = TRUE
+  )
+eiu.dfm <- dfm(eiu.token,
+             tolower = TRUE,
+             stem = TRUE,
+             remove = stopwords("english")
+             )
+eiu.dtm <- convert(eiu.dfm, to = "tm")
+eiu.tdm <- as.TermDocumentMatrix(t(eiu.dtm), weighting = weightTf) 
+```
+
+### Applying topic-dictionary to corpus 
+
+```{r, message=FALSE, warning=FALSE}
+dfm.edem <- dfm(eiu.corpus, dictionary = polyarchy.edem.lexicon)
+dfm.edem.prop <- dfm_weight(dfm.edem, scheme = "prop")
+edem.poplib.eiu <- convert(dfm.edem.prop, "data.frame") %>% 
+  bind_cols(eiu.corpus.stats) %>% 
+  filter(polyarchy > 0 | edem > 0)
+
+eiu.df <- as.data.frame(edem.poplib.eiu)
+```
+
+### Visualising share of e-dem 
+
+```{r, message=FALSE, warning=FALSE}
+full.pa <- eiu.df %>%
+  rename(Year = doc_id) %>%
+  select(Year, polyarchy, edem) %>%
+  gather(polyarchy:edem, key = "Topic", value = "Share") %>% 
+  group_by(Year) %>% 
+  mutate(Share = Share/sum(Share)) %>% 
+  mutate(Topic = as_factor(Topic))
+
+fig6 <- ggplot(full.pa, aes(Year, Share, fill = Topic)) + 
+  geom_bar(stat="identity") + 
+  scale_colour_brewer(palette = "Set1") + 
+  scale_fill_brewer(palette = "Pastel1") + 
+  scale_fill_discrete(labels = c("Polyarchy", "E-democracy")) +
+  ggtitle("Share of e-democracy in EIU democracy measure questions") + 
+  xlab("Year") + ylab("Proportional share") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+fig6
+ggsave("./Figures/fig6.png", width = 18, height = 10, units = "cm")
+```
+
+### Visualising frequency of e-dem
+
+```{r, message=FALSE, warning=FALSE}
+eiu.edem <- dfm_select(eiu.dfm, pattern = polyarchy.edem.lexicon$edem)
+eiu.df.edem <- as.data.frame(eiu.edem)
+long.eiu.edem <- eiu.df.edem %>% 
+  gather(concept, count, -c(doc_id)) %>%
+  dplyr::rename(Year = doc_id,
+                Count = count,
+                Concept = concept)
+fig8 <- ggplot(long.eiu.edem, aes(Year, Count, group = Concept, colour = Concept)) + 
+  geom_line() +
+  labs(title = "Frequency of explicit mentions of e-democracy concepts in EIU") +
+  ylim(0, 15)
+fig8
+ggsave("./Figures/fig8.png", width = 18, height = 10, units = "cm")
+```
+
+# FH
+
+### Creating corpus
+
+```{r, message=FALSE, warning=FALSE}
+fh_methodology <- readtext("~/Documents/USYD/YR4_2022/Honours/Analysis/Data/FH/methodology_pdfs/*.pdf") 
+fh_methodology$doc_id <- str_sub(fh_methodology$doc_id, start = 1, end = -5)
+fh.corpus <- corpus(fh_methodology)
+docvars(fh.corpus, "Textno") <- sprintf("%02d", 1:ndoc(fh.corpus))
+docvars(fh.corpus, "Source") <- "fh"
+fh.corpus.stats <- summary(fh.corpus)
+fh.corpus.stats$Text <- reorder(fh.corpus.stats$Text, 1:ndoc(fh.corpus), order = T)
+fh.token <-
+  tokens(
+    fh.corpus,
+    split_hyphens = TRUE,
+    remove_numbers = TRUE,
+    remove_punct = TRUE,
+    remove_symbols = TRUE,
+    remove_url = TRUE,
+    include_docvars = TRUE
+  )
+fh.dfm <- dfm(fh.token,
+             tolower = TRUE,
+             stem = TRUE,
+             remove = stopwords("english")
+             )
+fh.dtm <- convert(fh.dfm, to = "tm")
+fh.tdm <- as.TermDocumentMatrix(t(fh.dtm), weighting = weightTf) 
+```
+
+### Applying topic-dictionary to corpus 
+
+```{r, message=FALSE, warning=FALSE}
+dfm.edem <- dfm(fh.corpus, dictionary = polyarchy.edem.lexicon)
+dfm.edem.prop <- dfm_weight(dfm.edem, scheme = "prop")
+edem.poplib.fh <- convert(dfm.edem.prop, "data.frame") %>% 
+  bind_cols(fh.corpus.stats) %>% 
+  filter(polyarchy > 0 | edem > 0)
+
+fh.df <- as.data.frame(dfm.edem)
+```
+
+### Visualising share of e-dem 
+
+```{r, message=FALSE, warning=FALSE}
+fh.df %>%
+  rename(Year = doc_id) %>%
+  select(Year, polyarchy, edem) %>%
+  gather(polyarchy:edem, key = "Topic", value = "Share") %>% 
+  group_by(Year) %>% 
+  mutate(Share = Share/sum(Share)) %>% 
+  mutate(Topic = as_factor(Topic))
+  
+full.pa <- fh.df %>%
+  rename(Year = doc_id) %>%
+  select(Year, polyarchy, edem) %>%
+  gather(polyarchy:edem, key = "Topic", value = "Share") %>% 
+  group_by(Year) %>% 
+  mutate(Share = Share/sum(Share)) %>% 
+  mutate(Topic = as_factor(Topic))
+
+fig7 <- ggplot(full.pa, aes(Year, Share, fill = Topic)) + 
+  geom_bar(stat="identity") + 
+  scale_colour_brewer(palette = "Set1") + 
+  scale_fill_brewer(palette = "Pastel1") + 
+  scale_fill_discrete(labels = c("Polyarchy", "E-democracy")) +
+  ggtitle("Share of e-democracy in FH democracy measure questions") +
+  xlab("Year") + ylab("Proportional share") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+fig7
+ggsave("./Figures/fig7.png", width = 18, height = 10, units = "cm")
+```
+
+### Visualising frequency of e-dem
+
+```{r, message=FALSE, warning=FALSE}
+fh.edem <- dfm_select(fh.dfm, pattern = polyarchy.edem.lexicon$edem)
+fh.df.edem <- as.data.frame(fh.edem)
+long.fh.edem <- fh.df.edem %>% 
+  gather(concept, count, -c(doc_id)) %>%
+  dplyr::rename(Year = doc_id,
+                Count = count,
+                Concept = concept)
+fig9 <- ggplot(long.fh.edem, aes(Year, Count, group = Concept, colour=Concept)) + geom_line() +
+  labs(title = "Frequency of explict mentions of e-democracy concepts in FH") 
+fig9
+ggsave("./Figures/fig9.png", width = 18, height = 10, units = "cm")
+```
+
